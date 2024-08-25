@@ -4,9 +4,13 @@ from werkzeug.utils import secure_filename
 import torch
 
 app = Flask(__name__)
+###### This part needs to be modified to get user uploaded image #######
 app.config['UPLOAD_FOLDER'] = 'uploads/'
-app.config['DETECTION_FOLDER'] = 'static/detections'
 os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
+######                                                           #######
+
+## This is a folder to store result image with labels and bounding boxes
+app.config['DETECTION_FOLDER'] = 'static/detections'
 os.makedirs(app.config['DETECTION_FOLDER'], exist_ok=True)
 
 # Load YOLOv5 model
@@ -30,11 +34,12 @@ def upload_file():
 
         # Perform object detection
         results = model(filepath)
+        print(results)
         results.render()  # Updates results.imgs with boxes and labels
         output_image_path = app.config['DETECTION_FOLDER']
         results.save(save_dir=output_image_path)  # Save the image with detections
 
-        return 
+        return None
 
 
 if __name__ == "__main__":
