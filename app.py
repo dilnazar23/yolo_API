@@ -1,46 +1,48 @@
-from flask import Flask, request, render_template, redirect, url_for, send_from_directory
-import os
-from werkzeug.utils import secure_filename
+from flask import Flask, request, jsonify
 import torch
+import requests
+from PIL import Image
+from io import BytesIO
+
+# Load the YOLOv5 model
+model = torch.hub.load('ultralytics/yolov5', 'custom', path='yolov5/best.pt')
 
 app = Flask(__name__)
-###### This part needs to be modified to get user uploaded image #######
-app.config['UPLOAD_FOLDER'] = 'uploads/'
-os.makedirs(app.config['UPLOAD_FOLDER'], exist_ok=True)
-######                                                           #######
 
-## This is a folder to store result image with labels and bounding boxes
-app.config['DETECTION_FOLDER'] = 'static/detections'
-os.makedirs(app.config['DETECTION_FOLDER'], exist_ok=True)
+@app.route('/detect', methods=['POST'])
+def detect_objects():
+    # Get the image URL from the request
+    image_url = request.json.get('image_url')
+    
+    if not image_url:
+        return jsonify({'error': 'No image URL provided'}), 400
+    
+    # Download the image
+    try:
+        response = requests.get(image_url)
+        img = Image.open(BytesIO(response.content))
+    except Exception as e:
+        return jsonify({'error': f'Error downloading image: {str(e)}'}), 400
+    
+    # Perform object detection
+    results = model(img)
+    
+    # Extract the results
+    detected_objects = results.pandas().xyxy[0].to_dict(orient="records")
+    
+    # Format the response to bool value base on the number of detected objects
+    isDrunk = False
+    if len(detected_objects) > 0:
+        isDrunk = True
+    else:
+        isDrunk = False
 
-# Load YOLOv5 model
-model = torch.hub.load('ultralytics/yolov5', 'custom', path='yolov5/best.pt')  # Or use your trained model
+    # Format the response
+    response = {
+        'detected_objects': isDrunk
+    }
+    
+    return jsonify(response)
 
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    if 'file' not in request.files:
-        return redirect(request.url)
-    file = request.files['file']
-    if file.filename == '':
-        return redirect(request.url)
-    if file:
-        filename = secure_filename(file.filename)
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        file.save(filepath)
-
-        # Perform object detection
-        results = model(filepath)
-        print(results)
-        results.render()  # Updates results.imgs with boxes and labels
-        output_image_path = app.config['DETECTION_FOLDER']
-        results.save(save_dir=output_image_path)  # Save the image with detections
-
-        return None
-
-
-if __name__ == "__main__":
-    app.run(debug=True)
+if __name__ == '__main__':
+    app.run(debug=True, host='0.0.0.0', port=5000)
